@@ -15,6 +15,7 @@ spec:
     - cloudflared
     - crun
     - ctr
+    - datum-connect
     - drbd
     - dvb-cx23885
     - dvb-m88ds3103

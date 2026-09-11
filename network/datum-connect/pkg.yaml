@@ -1,0 +1,103 @@
+name: datum-connect
+variant: alpine
+shell: /bin/sh
+dependencies:
+  - stage: base
+    from: /
+    to: /base-rootfs
+install:
+  - build-base
+  - ca-certificates
+  - curl
+  - git
+  - go
+  - perl
+  - pkgconf
+steps:
+  - env:
+      CARGO_HOME: /tmp/cargo
+      RUSTUP_HOME: /tmp/rustup
+      GOPATH: /tmp/go
+      GOMODCACHE: /tmp/go/pkg/mod
+      GOCACHE: /tmp/go/cache
+      # datumctl's go.mod asks for a newer toolchain than Alpine ships; auto downloads it during prepare.
+      GOTOOLCHAIN: auto
+      PATH: /tmp/cargo/bin:/tmp/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    cachePaths:
+      - /tmp/cargo/registry
+      - /tmp/cargo/git
+      - /tmp/go/pkg/mod
+      - /tmp/go/cache
+    sources:
+      - url: https://github.com/datum-cloud/connect/archive/refs/tags/v{{ .DATUM_CONNECT_VERSION }}.tar.gz
+        destination: connect.tar.gz
+        sha256: {{ .DATUM_CONNECT_SHA256 }}
+        sha512: {{ .DATUM_CONNECT_SHA512 }}
+      - url: https://github.com/datum-cloud/datumctl/archive/refs/tags/v{{ .DATUMCTL_VERSION }}.tar.gz
+        destination: datumctl.tar.gz
+        sha256: {{ .DATUMCTL_SHA256 }}
+        sha512: {{ .DATUMCTL_SHA512 }}
+  - network: default
+    prepare:
+      - |
+        mkdir -p connect datumctl
+        tar -xzf connect.tar.gz --strip-components=1 -C connect
+        tar -xzf datumctl.tar.gz --strip-components=1 -C datumctl
+      # Alpine's packaged Rust lags the edition-2024 toolchain the agent builds with, so pin one via rustup.
+      - |
+        curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path \
+          --default-host {{ .ARCH }}-unknown-linux-musl \
+          --default-toolchain {{ .DATUM_CONNECT_RUST_VERSION }}
+        cargo --version
+      - |
+        cd connect/connect-lib
+        cargo fetch --locked
+      - |
+        cd datumctl
+        go version
+        go mod download
+  - network: none
+    build:
+      - |
+        cd connect/connect-lib
+        cargo build --release --locked --offline -p datum-connect
+      # asyncpreemptoff: the Go compiler segfaults in runtime.asyncPreempt under x86 emulation (Rosetta) otherwise.
+      - |
+        cd datumctl
+        GODEBUG=asyncpreemptoff=1 CGO_ENABLED=0 go build -mod=readonly -trimpath \
+          -ldflags "-s -w -X k8s.io/component-base/version.gitVersion=v{{ .DATUMCTL_VERSION }}" \
+          -o /tmp/datumctl-bin .
+      - |
+        GODEBUG=asyncpreemptoff=1 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/datum-connect-service /pkg/entrypoint/main.go
+    install:
+      - |
+        bin=/rootfs/usr/local/lib/containers/datum-connect/usr/local/bin
+        mkdir -p "$bin"
+        install -m 0755 connect/connect-lib/target/release/datum-connect "$bin/datum-connect"
+        install -m 0755 /tmp/datumctl-bin "$bin/datumctl"
+        install -m 0755 /tmp/datum-connect-service "$bin/datum-connect-service"
+      - |
+        mkdir -p /rootfs/usr/local/etc/containers
+        cp /pkg/datum-connect.yaml /rootfs/usr/local/etc/containers/
+    test:
+      - |
+        mkdir -p /extensions-validator-rootfs
+        cp -r /rootfs/ /extensions-validator-rootfs/rootfs
+        cp /pkg/manifest.yaml /extensions-validator-rootfs/manifest.yaml
+        /base-rootfs/extensions-validator validate --rootfs=/extensions-validator-rootfs --pkg-name="${PKG_NAME}"
+      - |
+        bin=/rootfs/usr/local/lib/containers/datum-connect/usr/local/bin
+        "$bin/datum-connect" --version
+        "$bin/datumctl" version --client | grep -q 'v{{ .DATUMCTL_VERSION }}'
+        ( "$bin/datum-connect-service" || true ) 2>&1 | grep -q DATUM_PROJECT
+    sbom:
+      outputPath: /rootfs/usr/local/share/spdx/datum-connect.spdx.json
+      version: {{ .DATUM_CONNECT_VERSION }}
+      licenses:
+        - AGPL-3.0-only
+        - Apache-2.0
+finalize:
+  - from: /rootfs
+    to: /rootfs
+  - from: /pkg/manifest.yaml
+    to: /

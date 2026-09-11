@@ -79,6 +79,7 @@ TARGETS += chelsio-firmware
 TARGETS += cloudflared
 TARGETS += crun
 TARGETS += ctr
+TARGETS += datum-connect
 TARGETS += drbd
 TARGETS += dvb-cx23885
 TARGETS += dvb-m88ds3103

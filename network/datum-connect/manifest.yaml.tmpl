@@ -1,0 +1,14 @@
+version: v1alpha1
+metadata:
+  name: datum-connect
+  version: "{{ .VERSION }}"
+  author: Vadim Bauer
+  description: |
+    [{{ .TIER }}] Datum Connect registers the node as a Connector in a Datum Cloud project and
+    serves outbound-only iroh/QUIC tunnels, so local services can be published through a
+    Datum Application Load Balancer without a public IP or open inbound ports.
+    Bundles datum-connect, datumctl (credentials helper) and a service entrypoint.
+    More info: https://github.com/datum-cloud/connect
+  compatibility:
+    talos:
+      version: ">= v1.5.0"

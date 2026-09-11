@@ -1,0 +1,2 @@
+VERSION: "{{ .DATUM_CONNECT_VERSION }}"
+TIER: "contrib"
