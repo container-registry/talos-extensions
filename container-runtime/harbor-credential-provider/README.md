@@ -16,8 +16,9 @@ See [Installing Extensions](https://github.com/siderolabs/extensions#installing-
 
 You also need to configure `harbor-credential-provider` as a Kubelet image
 credential provider. For this you'll need to patch the machine config with the following
-(replacing `harbor.example.com` in `serviceAccountTokenAudience` with the audience of the
-Harbor trusted issuer, see [Harbor configuration](#harbor-configuration)):
+(replacing `harbor.example.com` in `matchImages` with your registry hostname, and in
+`serviceAccountTokenAudience` with the audience of the Harbor trusted issuer, see
+[Harbor configuration](#harbor-configuration); the two values are independent):
 
 ```yaml
 machine:
